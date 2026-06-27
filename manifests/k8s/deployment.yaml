@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitops-springboot-deployment
+  labels:
+    app: gitops-springboot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gitops-springboot
+  template:
+    metadata:
+      labels:
+        app: gitops-springboot
+    spec:
+      containers:
+        - name: gitops-springboot
+          image: ghcr.io/OWNER/REPO/spring-boot-gitops:latest
+          ports:
+            - containerPort: 8080
