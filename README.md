@@ -10,7 +10,7 @@ A minimal Spring Boot app with a GitOps-friendly workflow and step-by-step VM in
 - `Jenkinsfile` for CI pipeline
 - `manifests/jenkins/jenkins-deployment.yaml` (optional in-cluster Jenkins)
 - `manifests/argocd/application.yaml` (Argo CD application manifest)
-- bootstrap helpers in `scripts/` (`setup-ubuntu-vm.sh` for a VM-based flow)
+- no bootstrap scripts are included here; you will write those inside the Ubuntu VM as a learning exercise
 
 ## GitOps pattern (high level)
 
@@ -25,64 +25,73 @@ This repo includes a complete workflow to run everything inside a single Ubuntu 
 
 1. Prepare VM resources: 4 CPU, 8 GB RAM, 40+ GB disk recommended.
 2. Copy or clone this repository into the VM.
-3. Learning exercises — scripts intentionally omitted
+3. Manual VM workflow — run commands directly inside the Ubuntu VM
 
-This repository intentionally excludes bootstrap scripts. The goal is for you to clone the repo inside your Ubuntu VM and implement the bootstrap steps yourself so you learn each command and why it is used.
+This repository does not include any bootstrap scripts. You will run the setup commands one by one inside the VM so you can see exactly what happens at each step.
 
-Suggested exercises to implement inside the VM:
+Recommended manual steps in the VM:
 
-- `setup-ubuntu-vm.sh` — install Docker, `kubectl`, `minikube`, Helm, Java 17 and Maven. Tasks:
-  - install prerequisites (`docker.io`, `conntrack`, `socat`),
-  - install `kubectl` and `minikube`,
-  - install Java 17 and Maven,
-  - print instructions for starting Minikube.
+1. Install Docker and required system tools:
+   ```bash
+   sudo apt update
+   sudo apt install -y docker.io conntrack socat curl
+   sudo usermod -aG docker $USER
+   newgrp docker
+   ```
 
-- `bootstrap-minikube.sh` — start Minikube (driver=docker), enable a local registry addon, and install Argo CD into the cluster.
+2. Install `kubectl`:
+   ```bash
+   curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+   chmod +x kubectl
+   sudo mv kubectl /usr/local/bin/
+   ```
 
-- `jenkins/Dockerfile` — (optional) build a Jenkins image that includes Docker CLI, Maven and Git so Jenkins can build and push images.
+3. Install `minikube`:
+   ```bash
+   curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+   sudo install minikube-linux-amd64 /usr/local/bin/minikube
+   ```
 
-Example commands to run in your VM after you create the scripts:
+4. Install Java 17 and Maven:
+   ```bash
+   sudo apt install -y openjdk-17-jdk maven git
+   ```
 
-```bash
-chmod +x setup-ubuntu-vm.sh
-./setup-ubuntu-vm.sh
+5. Start Minikube with Docker driver:
+   ```bash
+   minikube start --driver=docker --cpus=4 --memory=8192
+   ```
 
-# start minikube
-minikube start --driver=docker --cpus=4 --memory=8192
+6. Enable Minikube registry and Argo CD:
+   ```bash
+   minikube addons enable registry
+   kubectl create namespace argocd
+   kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+   ```
 
-# enable registry and install Argo CD
-minikube addons enable registry
-kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-```
+7. Find the local registry URL for Jenkins to push images:
+   ```bash
+   minikube service registry -n kube-system --url
+   ```
 
-After you complete the exercises inside the VM:
-
-- Jenkins UI will be reachable at the port you expose on the VM (for example `http://localhost:8081`).
-- To find the Minikube registry URL to use in your Jenkins pipeline, run:
-
-```bash
-minikube service registry -n kube-system --url
-```
-
-- Use the returned URL as the `REGISTRY` in your `Jenkinsfile` or Jenkins job.
+8. Use that `REGISTRY` value in your Jenkins pipeline or job configuration.
 
 ### Quick deployment flow
 
-- Jenkins builds the Docker image and pushes it to the Minikube registry (configured by `REGISTRY`).
-- Update `manifests/k8s/deployment.yaml` to point to the image built by Jenkins (or let Jenkins update the manifest).
+- Jenkins builds the Docker image and pushes it to the Minikube registry using the configured `REGISTRY`.
+- Update `manifests/k8s/deployment.yaml` to point to the image built by Jenkins.
 - Argo CD observes the manifests in the Git repo and syncs them into Minikube.
 
 ## Running Jenkins in the VM
 
-- The bootstrap builds and runs a `jenkins-docker` image which includes `docker` and `maven` so your pipeline can build and push images.
-- The Jenkins container is run with `-v /var/run/docker.sock:/var/run/docker.sock` so it can use the VM Docker daemon.
+- If you deploy Jenkins inside the VM, you can run it as a Docker container and mount `/var/run/docker.sock:/var/run/docker.sock` so Jenkins can build and push images.
+- You can also build a custom Jenkins image inside the VM that includes Docker CLI, Maven and Git.
 
 For persistent storage in production, replace the `emptyDir` volumes in `manifests/jenkins/jenkins-deployment.yaml` with a PVC or an external volume.
 
 ## Using Argo CD
 
-- Argo CD is installed into Minikube by the bootstrap script.
+- Install Argo CD manually into Minikube using the commands above.
 - You can create an Argo CD `Application` (we provide `manifests/argocd/application.yaml`) that points to this repo and the `manifests/k8s` path.
 
 ## Example Jenkinsfile notes
@@ -96,17 +105,3 @@ For persistent storage in production, replace the `emptyDir` volumes in `manifes
   - Update `manifests/k8s/deployment.yaml` to reference the new image tag
 
 Set the pipeline environment variable `REGISTRY` to the value returned by `minikube service registry -n kube-system --url`.
-
-## Next steps I can help with
-
-- Walk you step-by-step through running the bootstrap inside your VM and validating each step.
-- Provide a PowerShell helper if you want to automate VM file transfer/startup from Windows.
-- Convert the Jenkins pipeline to use `minikube image load` instead of a registry (if you prefer that approach).
-
----
-
-If you want to continue now, tell me if I should:
-
-1) Walk you interactively through running `./scripts/setup-ubuntu-vm.sh` inside your Ubuntu VM and checking outputs step-by-step, or
-2) Produce a PowerShell helper script to set up the VM and copy files from Windows into it automatically.
-
