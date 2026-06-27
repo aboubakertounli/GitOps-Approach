@@ -98,10 +98,15 @@ For persistent storage in production, replace the `emptyDir` volumes in `manifes
 
 - `Jenkinsfile` in this repo contains stages:
   - Checkout
+  - Set image name using the build number
   - Build (`mvn package`)
   - Unit tests
   - Docker image build
   - Push image to `REGISTRY`
   - Update `manifests/k8s/deployment.yaml` to reference the new image tag
+  - Commit and push the manifest change back to Git
+
+- This is the GitOps signal: Jenkins updates the manifest in Git so Argo CD can detect the new image and apply it.
+- You must configure a Jenkins credential named `github-creds` (username/password) or adapt `GIT_CREDENTIALS_ID` to your credential ID.
 
 Set the pipeline environment variable `REGISTRY` to the value returned by `minikube service registry -n kube-system --url`.
